@@ -2,17 +2,33 @@ const redis = require("redis");
 
 let client = null;
 let isConnected = false;
+let connectionAttempted = false;
 
 const createRedisClient = async () => {
+  // Only attempt connection once per server startup
+  if (connectionAttempted) {
+    return;
+  }
+  connectionAttempted = true;
+
   try {
     const redisUrl = process.env.REDIS_URL;
+    
+    // Skip Redis if URL is empty or localhost
+    if (!redisUrl || redisUrl.includes("127.0.0.1") || redisUrl.includes("localhost")) {
+      console.warn("[Redis] Redis URL is localhost. Skipping Redis connection (this is expected on Render)");
+      console.warn("[Redis] Running without caching - data will be fetched from MongoDB each time");
+      isConnected = false;
+      return;
+    }
+
     console.log("[Redis] Attempting to connect...");
     
     const tempClient = redis.createClient({
       url: redisUrl,
       socket: {
         connectTimeout: 5000,
-        reconnectStrategy: (retries) => Math.min(retries * 50, 500),
+        reconnectStrategy: () => false, // Don't reconnect after first failure
       },
     });
 
@@ -36,8 +52,8 @@ const createRedisClient = async () => {
     isConnected = true;
     console.log("[Redis] Ready to use");
   } catch (error) {
-    console.error("[Redis] Failed to connect:", error.message);
-    console.warn("[Redis] Running without caching - some features will be slow");
+    console.warn("[Redis] Not available:", error.message);
+    console.warn("[Redis] Continuing without caching (this is normal on Render free tier)");
     isConnected = false;
   }
 };
@@ -49,7 +65,6 @@ createRedisClient();
 const redisWrapper = {
   get: async (key) => {
     if (!client || !isConnected) {
-      console.warn("[Redis] Not connected, skipping GET");
       return null;
     }
     try {
@@ -62,7 +77,6 @@ const redisWrapper = {
 
   set: async (key, value) => {
     if (!client || !isConnected) {
-      console.warn("[Redis] Not connected, skipping SET");
       return;
     }
     try {
@@ -74,7 +88,6 @@ const redisWrapper = {
 
   del: async (key) => {
     if (!client || !isConnected) {
-      console.warn("[Redis] Not connected, skipping DEL");
       return;
     }
     try {
