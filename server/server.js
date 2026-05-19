@@ -30,6 +30,25 @@ app.use(
 
 app.use(express.json());
 
+// Request timing middleware
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on("finish", () => {
+    const duration = Date.now() - start;
+    console.log(`[${req.method}] ${req.path} - ${res.statusCode} (${duration}ms)`);
+  });
+  next();
+});
+
+// HEALTH CHECK ENDPOINT
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    status: "OK",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+  });
+});
+
 const server = http.createServer(app);
 
 const io = new Server(server, {
@@ -44,6 +63,16 @@ const io = new Server(server, {
     methods: ["GET", "POST"],
     credentials: true,
   },
+  pingInterval: 25000,
+  pingTimeout: 60000,
+});
+
+// Socket.IO connection logging
+io.on("connection", (socket) => {
+  console.log(`[Socket] Client connected: ${socket.id}`);
+  socket.on("disconnect", () => {
+    console.log(`[Socket] Client disconnected: ${socket.id}`);
+  });
 });
 
 // ROUTES
@@ -55,7 +84,7 @@ app.use("/feed", feedRoutes);
 server.listen(process.env.PORT, () => {
 
   console.log(
-    `Server running on ${process.env.PORT}`
+    `✓ Server running on http://localhost:${process.env.PORT}`
   );
 
 });
