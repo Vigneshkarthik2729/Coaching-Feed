@@ -100,5 +100,47 @@ module.exports = (io) => {
     }
   });
 
+  // DELETE FEED
+  router.delete("/:id", async (req, res) => {
+
+    try {
+
+      console.log(`[DELETE /feed/:id] Deleting feed: ${req.params.id}`);
+      
+      const feed = await Feed.findByIdAndDelete(req.params.id);
+      
+      if (!feed) {
+        return res.status(404).json({
+          message: "Feed not found",
+        });
+      }
+
+      // SEND RESPONSE IMMEDIATELY
+      res.status(200).json({
+        message: "Feed deleted successfully",
+        feedId: req.params.id,
+      });
+
+      // Clear cache in background (non-blocking)
+      redisClient.del("feeds")
+        .then(() => console.log("[DELETE /feed] Cache cleared"))
+        .catch(err => console.error("[Cache] Failed to clear:", err));
+
+      // Emit deletion event in background (non-blocking)
+      setImmediate(() => {
+        io.emit("deleteFeed", { feedId: req.params.id });
+        console.log(`[DELETE /feed] Real-time deletion event emitted`);
+      });
+
+    } catch (error) {
+
+      console.error("[DELETE /feed] Error:", error.message);
+      res.status(500).json({
+        message: error.message,
+      });
+
+    }
+  });
+
   return router;
 };
